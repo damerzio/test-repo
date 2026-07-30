@@ -1,5 +1,3 @@
-servers:
-  - url: http://example.com
 info:
   title: Learning API Demo
   version: v1
