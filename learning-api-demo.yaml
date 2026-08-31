@@ -6,8 +6,6 @@ tags:
     description: Endpoints related to learning activities, such as lessons, videos, and interactive exercises. Use these APIs to create, update, retrieve, and delete learning activities.
   - name: Quizzes
     description: Endpoints for managing quizzes and quiz questions. These APIs enable you to create, update, retrieve, and delete quizzes, as well as manage questions and options within quizzes.
-  - name: Badges
-    description: Endpoints for badge management, including creating, updating, retrieving, and deleting badges. Badges are awarded to learners based on their performance or progress in the learning system.
   - name: Scores
     description: Endpoints for handling learner scores on quizzes, activities, and assignments. Use these APIs to submit, retrieve, update, and delete scores for individual learners or groups.
   - name: Checklists
