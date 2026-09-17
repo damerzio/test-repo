@@ -1,0 +1,85 @@
+name: 'Move linked issues to In review'
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+jobs:
+  move-linked-issues:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set linked issues to "In review" on the board
+        uses: actions/github-script@v8
+        env:
+          PROJECT_ID: PVT_kwHOAgM6Ys4Bj0ku
+          STATUS_FIELD: Status
+          TARGET_STATUS: In review
+        with:
+          github-token: ${{ secrets.PROJECTS_TOKEN }}
+          script: |
+            const { PROJECT_ID, STATUS_FIELD, TARGET_STATUS } = process.env;
+
+            const { repository } = await github.graphql(`
+              query($owner: String!, $repo: String!, $number: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $number) {
+                    closingIssuesReferences(first: 20) {
+                      nodes {
+                        id
+                        number
+                        projectItems(first: 20) { nodes { id project { id } } }
+                      }
+                    }
+                  }
+                }
+              }`, { ...context.repo, number: context.payload.pull_request.number });
+
+            const issues = repository.pullRequest.closingIssuesReferences.nodes;
+            if (issues.length === 0) {
+              core.info('PR closes no issues — nothing to move.');
+              return;
+            }
+
+            const { node: project } = await github.graphql(`
+              query($projectId: ID!, $field: String!) {
+                node(id: $projectId) {
+                  ... on ProjectV2 {
+                    title
+                    field(name: $field) {
+                      ... on ProjectV2SingleSelectField { id options { id name } }
+                    }
+                  }
+                }
+              }`, { projectId: PROJECT_ID, field: STATUS_FIELD });
+
+            const option = project.field.options.find((o) => o.name === TARGET_STATUS);
+            if (!option) {
+              throw new Error(`"${TARGET_STATUS}" is not an option of ${STATUS_FIELD} on ${project.title}`);
+            }
+
+            for (const issue of issues) {
+              let item = issue.projectItems.nodes.find((i) => i.project.id === PROJECT_ID);
+              if (!item) {
+                const added = await github.graphql(`
+                  mutation($projectId: ID!, $contentId: ID!) {
+                    addProjectV2ItemById(input: { projectId: $projectId, contentId: $contentId }) {
+                      item { id }
+                    }
+                  }`, { projectId: PROJECT_ID, contentId: issue.id });
+                item = added.addProjectV2ItemById.item;
+                core.info(`#${issue.number} was not on the board — added it.`);
+              }
+
+              await github.graphql(`
+                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: $projectId
+                    itemId: $itemId
+                    fieldId: $fieldId
+                    value: { singleSelectOptionId: $optionId }
+                  }) { projectV2Item { id } }
+                }`, { projectId: PROJECT_ID, itemId: item.id, fieldId: project.field.id, optionId: option.id });
+
+              core.info(`#${issue.number} → ${TARGET_STATUS}`);
+            }
